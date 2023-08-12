@@ -7,9 +7,21 @@ package apihandler
 import (
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 )
 
+// argsToRgxSub constant contains the regex pattern to match a named argument
+// in a request URI, includes the interpolation of the name of the argument.
+const argsToRgxSub = "(?P<$arg_name>.+)"
+
+// argsToRgx variable is a regex that allows to detect named arguments from a
+// route path, helping to build a regex to match requests URIs with the route
+// supporting named args.
+var argsToRgx = regexp.MustCompile(`(?U)\{(?P<arg_name>.+)\}`)
+
+// supportedMethods variable contains the list of HTTP suppoted methods
 var supportedMethods = []string{
 	http.MethodGet,
 	http.MethodHead,
@@ -22,12 +34,22 @@ var supportedMethods = []string{
 	http.MethodTrace,
 }
 
+// route struct contains the parameters of a valid route, which contains the
+// method, the path, a regex to match request URIs with paths that use named
+// arguments, and the route handler.
+type route struct {
+	method  string
+	path    string
+	rgx     *regexp.Regexp
+	handler func(http.ResponseWriter, *http.Request)
+}
+
 // Handler struct cotains the list of assigned routes and also an error channel
 // to listen to raised errors using `Handler.Error(error)`.
 type Handler struct {
 	Errors chan error
 	mtx    *sync.Mutex
-	routes map[string]func(http.ResponseWriter, *http.Request)
+	routes []*route
 }
 
 // New function returns a Handler initialized and read-to-use.
@@ -35,7 +57,7 @@ func New() *Handler {
 	return &Handler{
 		Errors: make(chan error),
 		mtx:    &sync.Mutex{},
-		routes: map[string]func(http.ResponseWriter, *http.Request){},
+		routes: []*route{},
 	}
 }
 
@@ -50,8 +72,13 @@ func (m *Handler) Error(err error) {
 // it is not registered yet, the function sends a response with a 405 HTTP
 // error.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	if handler := m.find(req.Method, req.RequestURI); handler != nil {
-		handler(res, req)
+	if route, exist := m.find(req.Method, req.RequestURI); exist {
+		args, _ := parseArgs(req.RequestURI, route.rgx)
+		for key, val := range args {
+			req.Header.Set(key, val)
+		}
+
+		route.handler(res, req)
 		return
 	}
 	res.WriteHeader(http.StatusMethodNotAllowed)
@@ -62,13 +89,38 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 // HandleFunc method assign the provided handler for requests sent to the
 // desired method and path. It checks if the method provided is already
-// supported before assign it.
+// supported before assign it. It also transform the provided path into a regex
+// and assign it to the created route. If already exists a route with the same
+// method and path, it will be overwritten.
 func (m *Handler) HandleFunc(method, path string, handler func(http.ResponseWriter, *http.Request)) {
 	for _, supported := range supportedMethods {
 		if supported == method {
 			m.mtx.Lock()
 			defer m.mtx.Unlock()
-			m.routes[routeKey(method, path)] = handler
+			rgx, err := pathToRegex(path)
+			if err != nil {
+				m.Error(fmt.Errorf("error parsing route '%s': %w", path, err))
+				return
+			}
+			// try to overwrite if already exist a registered handler for it
+			for i, r := range m.routes {
+				if r.method == method && r.path == path {
+					m.routes[i] = &route{
+						method:  method,
+						path:    path,
+						rgx:     rgx,
+						handler: handler,
+					}
+					return
+				}
+			}
+			// if it does not exists, create it
+			m.routes = append(m.routes, &route{
+				method:  method,
+				path:    path,
+				rgx:     rgx,
+				handler: handler,
+			})
 			return
 		}
 	}
@@ -119,22 +171,41 @@ func (m *Handler) Trace(p string, h func(http.ResponseWriter, *http.Request)) {
 	m.HandleFunc(http.MethodTrace, p, h)
 }
 
-// find method search for a registered handler for the method and path provided,
-// calculating the routeKey with that arguments. If the route is not registered,
-// it returns nil.
-func (m *Handler) find(method, path string) func(http.ResponseWriter, *http.Request) {
+// find method search for a registered handler for the method and request URI
+// provided, matching the routes regex with the URI provided. If the route is
+// not registered, it returns also false.
+func (m *Handler) find(method, requestURI string) (*route, bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
-	handler, found := m.routes[routeKey(method, path)]
-	if !found {
-		return nil
+	for _, r := range m.routes {
+		if r.method == method && r.rgx.MatchString(requestURI) {
+			return r, true
+		}
 	}
-	return handler
+	return nil, false
 }
 
-// routeKey function returns the key of a route with the method and path
-// provided as argument. Both arguments will be joinned by '~'.
-func routeKey(method, path string) string {
-	return fmt.Sprintf("%s~%s", method, path)
+// pathToRegex function transforms the provided path into a regex to match with
+// the URI of incoming requests. The resulting regex will be able to match
+// named arguments from a request URI.
+func pathToRegex(path string) (*regexp.Regexp, error) {
+	rgx := argsToRgx.ReplaceAllString(path, argsToRgxSub)
+	escapedRgx := strings.ReplaceAll(rgx, "/", "\\/")
+	return regexp.Compile(escapedRgx)
+}
+
+// parseArgs function returns if the request URI matches with the route regex
+// provided and the named arguments that the URI could contain.
+func parseArgs(requestURI string, routeRgx *regexp.Regexp) (map[string]string, bool) {
+	// check if matches
+	if !routeRgx.MatchString(requestURI) {
+		return nil, false
+	}
+	// find named arguments
+	args := make(map[string]string)
+	matches := routeRgx.FindStringSubmatch(requestURI)
+	for i, name := range routeRgx.SubexpNames()[0:] {
+		args[name] = matches[i]
+	}
+	return args, true
 }

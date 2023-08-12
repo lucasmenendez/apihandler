@@ -14,10 +14,12 @@ go get github.com/lucasmenendez/apihandler
 ```
 
 ## Basic example
+
 ```go 
 package main
 
 import (
+    "encoding/json"
     "fmt"
     "net/http"
 
@@ -27,13 +29,29 @@ import (
 func main() {
     // create handler and register a GET handler function on '/count' path
     handler := apihandler.New()
-    handler.Get("/count", func(w http.ResponseWriter, r *http.Request) {
-        w.Write([]byte("{\"count\": 100}"))
+    handler.Get("/service/{service_name}/resource/{resource_name}", func(w http.ResponseWriter, r *http.Request) {
+        // get router arguments from Header
+        status := map[string]string{
+            "service":  r.Header.Get("service_name"),
+            "resource": r.Header.Get("resource_name"),
+            "status":   "ok",
+        }
+        // encoding response
+        body, err := json.Marshal(status)
+            if err != nil {
+            handler.Error(fmt.Errorf("error encoding status: %w", err))
+            return
+        }
+        // writing response
+        if _, err := w.Write(body); err != nil {
+            handler.Error(fmt.Errorf("error writing status: %w", err))
+            return
+        }
     })
     // run a goroutine to handle internal handler errors
     go func() {
         for err := range handler.Errors {
-            fmt.Printf("ERR: internal error: %s\n",err)
+            fmt.Printf("ERR: internal error: %s\n", err)
         }
     }()
     // run http server with created handler
@@ -42,5 +60,4 @@ func main() {
         return
     }
 }
-
 ```
