@@ -1,4 +1,4 @@
-# gomux
+# APIHandler
 
 apihandler package provides a simple `http.Handler` implementation with a REST friendly API syntax. Provides simple methods to assign handlers to a path by HTTP method.
 
