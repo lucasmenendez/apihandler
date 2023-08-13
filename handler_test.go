@@ -147,6 +147,10 @@ func Test_pathToRegex(t *testing.T) {
 	if _, match := parseArgs(wrongRequestURI, routeRgx); match {
 		t.Fatal("expected false, got true")
 	}
+	wrongRequestURI = "/api/v2/user/0xffffff/age"
+	if _, match := parseArgs(wrongRequestURI, routeRgx); match {
+		t.Fatal("expected false, got true")
+	}
 	requestURI := "/api/v2/user/0xffffff"
 	args, match := parseArgs(requestURI, routeRgx)
 	if !match {
@@ -154,6 +158,17 @@ func Test_pathToRegex(t *testing.T) {
 	}
 	if value, ok := args["version"]; !ok || value != "v2" {
 		t.Fatalf("expected 'v2', got '%s'", value)
+	}
+	if value, ok := args["id"]; !ok || value != "0xffffff" {
+		t.Fatalf("expected '0xffffff', got '%s'", value)
+	}
+	requestURI = "/api/v3/user/0xffffff/"
+	args, match = parseArgs(requestURI, routeRgx)
+	if !match {
+		t.Fatal("expected true, got false")
+	}
+	if value, ok := args["version"]; !ok || value != "v3" {
+		t.Fatalf("expected 'v3', got '%s'", value)
 	}
 	if value, ok := args["id"]; !ok || value != "0xffffff" {
 		t.Fatalf("expected '0xffffff', got '%s'", value)

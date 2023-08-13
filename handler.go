@@ -12,6 +12,10 @@ import (
 	"sync"
 )
 
+// uriSeparator contains a string with the backslash character to split the
+// URI for sanity checks
+const uriSeparator = "/"
+
 // argsToRgxSub constant contains the regex pattern to match a named argument
 // in a request URI, includes the interpolation of the name of the argument.
 const argsToRgxSub = "(?P<$arg_name>.+)"
@@ -178,7 +182,7 @@ func (m *Handler) find(method, requestURI string) (*route, bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, r := range m.routes {
-		if r.method == method && r.rgx.MatchString(requestURI) {
+		if r.method == method && matchURI(requestURI, r.rgx) {
 			return r, true
 		}
 	}
@@ -191,19 +195,30 @@ func (m *Handler) find(method, requestURI string) (*route, bool) {
 func pathToRegex(path string) (*regexp.Regexp, error) {
 	rgx := argsToRgx.ReplaceAllString(path, argsToRgxSub)
 	escapedRgx := strings.ReplaceAll(rgx, "/", "\\/")
-	return regexp.Compile(escapedRgx)
+	return regexp.Compile(fmt.Sprintf("%s$", escapedRgx))
+}
+
+// matchURI function returns if the requestURI provided matches with the route
+// regex provided. It also checks if both arguments have the same number of
+// URI parts.
+func matchURI(requestURI string, routeRgx *regexp.Regexp) bool {
+	uri, _ := strings.CutSuffix(requestURI, uriSeparator)
+	lenURI := strings.Count(uri, uriSeparator)
+	lenRgx := strings.Count(routeRgx.String(), uriSeparator)
+	return lenURI == lenRgx && routeRgx.MatchString(requestURI)
 }
 
 // parseArgs function returns if the request URI matches with the route regex
 // provided and the named arguments that the URI could contain.
 func parseArgs(requestURI string, routeRgx *regexp.Regexp) (map[string]string, bool) {
 	// check if matches
-	if !routeRgx.MatchString(requestURI) {
+	if !matchURI(requestURI, routeRgx) {
 		return nil, false
 	}
 	// find named arguments
 	args := make(map[string]string)
-	matches := routeRgx.FindStringSubmatch(requestURI)
+	uri, _ := strings.CutSuffix(requestURI, uriSeparator)
+	matches := routeRgx.FindStringSubmatch(uri)
 	for i, name := range routeRgx.SubexpNames()[0:] {
 		args[name] = matches[i]
 	}
