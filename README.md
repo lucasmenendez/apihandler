@@ -15,21 +15,13 @@ go get github.com/lucasmenendez/apihandler
 
 ## Basic example
 
+Check out the [full example here](example_test.go).
+
 ```go 
-package main
-
-import (
-    "encoding/json"
-    "fmt"
-    "net/http"
-
-    "github.com/lucasmenendez/apihandler"
-)
-
-func main() {
-    // create handler and register a GET handler function on '/count' path
-    handler := apihandler.New()
-    handler.Get("/service/{service_name}/resource/{resource_name}", func(w http.ResponseWriter, r *http.Request) {
+// create and register a new GET handler
+handler := NewHandler()
+err := handler.Get("/service/{service_name}/resource/{resource_name}",
+    func(w http.ResponseWriter, r *http.Request) {
         // get router arguments from Header
         status := map[string]string{
             "service":  r.Header.Get("service_name"),
@@ -38,26 +30,20 @@ func main() {
         }
         // encoding response
         body, err := json.Marshal(status)
-            if err != nil {
-            handler.Error(fmt.Errorf("error encoding status: %w", err))
+        if err != nil {
+            w.WriteHeader(http.StatusInternalServerError)
+            _, _ = w.Write([]byte(fmt.Sprintf("error encoding status: %s", err)))
             return
         }
         // writing response
-        if _, err := w.Write(body); err != nil {
-            handler.Error(fmt.Errorf("error writing status: %w", err))
-            return
-        }
+        _, _ = w.Write(body)
     })
-    // run a goroutine to handle internal handler errors
-    go func() {
-        for err := range handler.Errors {
-            fmt.Printf("ERR: internal error: %s\n", err)
-        }
-    }()
-    // run http server with created handler
-    if err := http.ListenAndServe(":8080", handler); err != nil {
-        fmt.Printf("ERR: error listening for requests: %s\n", err)
-        return
-    }
+if err != nil {
+    log.Printf("ERR: error listening for requests: %s\n", err)
+}
+// run http server with created handler
+if err := http.ListenAndServe(":8090", handler); err != nil {
+    log.Printf("ERR: error listening for requests: %s\n", err)
+    return
 }
 ```

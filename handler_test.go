@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 const testMethod = http.MethodGet
@@ -18,28 +17,23 @@ var testHandler = func(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	handler := New()
+	handler := NewHandler()
 
-	handler.HandleFunc("wrongmethod", testPath, testHandler)
-	if _, exist := handler.find("wrongmethod", testPath); exist {
-		t.Fatalf("expected no handler for [%s] %s", "wrongmethod", testPath)
+	if err := handler.HandleFunc("wrongmethod", testPath, testHandler); err == nil {
+		t.Fatal("expected error, got nil")
 	}
 
-	handler.HandleFunc(testMethod, testPath, testHandler)
+	if err := handler.HandleFunc(testMethod, testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(testMethod, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", testMethod, testPath)
 	}
 
-	go func() {
-		time.Sleep(time.Millisecond * 300)
-		handler.HandleFunc(testMethod, `^\/(?!\/)(.*?)`, testHandler)
-		close(handler.Errors)
-	}()
-
-	for err := range handler.Errors {
-		if err != nil && !strings.Contains(err.Error(), "error parsing route") {
-			t.Fatalf("expected 'error parsing route' error got %s", err)
-		}
+	if err := handler.HandleFunc(testMethod, `^\/(?!\/)(.*?)`, testHandler); err == nil {
+		t.Fatal("expected error, got nil")
+	} else if !strings.Contains(err.Error(), "error registering route") {
+		t.Fatalf("expected 'error registering route' error got %s", err)
 	}
 	if _, exist := handler.find(testMethod, `^\/(?!\/)(.*?)`); exist {
 		t.Fatalf("expected no handler for [%s] %s", testMethod, testPath)
@@ -47,8 +41,8 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestServerHTTP(t *testing.T) {
-	handler := New()
-	handler.HandleFunc(http.MethodGet, testPath, testHandler)
+	handler := NewHandler()
+	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 	go func() {
 		if err := http.ListenAndServe(":8080", handler); err != nil {
 			t.Log(err)
@@ -83,76 +77,102 @@ func TestServerHTTP(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	handler := New()
+	handler := NewHandler()
 
-	handler.Get(testPath, testHandler)
+	if err := handler.Get(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodGet, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodGet, testPath)
 	}
 	// try overwrite
-	handler.Get(testPath, testHandler)
+	if err := handler.Get(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodGet, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodGet, testPath)
 	}
 
-	handler.Head(testPath, testHandler)
+	if err := handler.Head(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodHead, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodHead, testPath)
 	}
 
-	handler.Post(testPath, testHandler)
+	if err := handler.Post(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodPost, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodPost, testPath)
 	}
 
-	handler.Put(testPath, testHandler)
+	if err := handler.Put(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodPut, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodPut, testPath)
 	}
 
-	handler.Patch(testPath, testHandler)
+	if err := handler.Patch(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodPatch, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodPatch, testPath)
 	}
 
-	handler.Delete(testPath, testHandler)
+	if err := handler.Delete(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodDelete, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodDelete, testPath)
 	}
 
-	handler.Connect(testPath, testHandler)
+	if err := handler.Connect(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodConnect, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodConnect, testPath)
 	}
 
-	handler.Options(testPath, testHandler)
+	if err := handler.Options(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodOptions, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodOptions, testPath)
 	}
 
-	handler.Trace(testPath, testHandler)
+	if err := handler.Trace(testPath, testHandler); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 	if _, exist := handler.find(http.MethodTrace, testPath); !exist {
 		t.Fatalf("expected handler for [%s] %s", http.MethodTrace, testPath)
 	}
 }
 
-func Test_pathToRegex(t *testing.T) {
+func Test_parseAndDecodeArgs(t *testing.T) {
 	routePath := "/api/{version}/user/{id}"
-	routeRgx, err := pathToRegex(routePath)
-	if err != nil {
+	testRoute := &route{
+		path: routePath,
+	}
+	if err := testRoute.parse(); err != nil {
 		t.Fatalf("expected nil, got %s", err)
 	}
 
 	wrongRequestURI := "/api/v2"
-	if _, match := parseArgs(wrongRequestURI, routeRgx); match {
+	if _, match := testRoute.decodeArgs(wrongRequestURI); match {
 		t.Fatal("expected false, got true")
 	}
 	wrongRequestURI = "/api/v2/user/0xffffff/age"
-	if _, match := parseArgs(wrongRequestURI, routeRgx); match {
+	if _, match := testRoute.decodeArgs(wrongRequestURI); match {
+		t.Fatal("expected false, got true")
+	}
+	wrongRequestURI = "/api/v2/user//"
+	if _, match := testRoute.decodeArgs(wrongRequestURI); match {
 		t.Fatal("expected false, got true")
 	}
 	requestURI := "/api/v2/user/0xffffff"
-	args, match := parseArgs(requestURI, routeRgx)
+	args, match := testRoute.decodeArgs(requestURI)
 	if !match {
 		t.Fatal("expected true, got false")
 	}
@@ -163,7 +183,7 @@ func Test_pathToRegex(t *testing.T) {
 		t.Fatalf("expected '0xffffff', got '%s'", value)
 	}
 	requestURI = "/api/v3/user/0xffffff/"
-	args, match = parseArgs(requestURI, routeRgx)
+	args, match = testRoute.decodeArgs(requestURI)
 	if !match {
 		t.Fatal("expected true, got false")
 	}
