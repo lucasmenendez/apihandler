@@ -54,7 +54,7 @@ func (r *route) parse() error {
 	rgx := argsToRgx.ReplaceAllString(r.path, argsToRgxSub)
 	escapedRgx := strings.ReplaceAll(rgx, "/", "\\/")
 	var err error
-	if r.rgx, err = regexp.Compile(fmt.Sprintf("%s[{]?$", escapedRgx)); err != nil {
+	if r.rgx, err = regexp.Compile(fmt.Sprintf("%s$", escapedRgx)); err != nil {
 		return fmt.Errorf("error parsing path: %w", err)
 	}
 	return nil
@@ -111,8 +111,8 @@ func NewHandler() *Handler {
 // it is not registered yet, the function sends a response with a 405 HTTP
 // error.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	if route, exist := m.find(req.Method, req.RequestURI); exist {
-		if args, ok := route.decodeArgs(req.RequestURI); ok {
+	if route, exist := m.find(req.Method, req.URL.Path); exist {
+		if args, ok := route.decodeArgs(req.URL.Path); ok {
 			for key, val := range args {
 				req.Header.Set(key, val)
 			}
