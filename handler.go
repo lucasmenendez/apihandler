@@ -95,13 +95,15 @@ func (r *route) decodeArgs(requestURI string) (map[string]string, bool) {
 type Handler struct {
 	mtx    *sync.Mutex
 	routes []*route
+	cors   bool
 }
 
 // NewHandler function returns a Handler initialized and read-to-use.
-func NewHandler() *Handler {
+func NewHandler(cors bool) *Handler {
 	return &Handler{
 		mtx:    &sync.Mutex{},
 		routes: []*route{},
+		cors:   cors,
 	}
 }
 
@@ -111,6 +113,15 @@ func NewHandler() *Handler {
 // it is not registered yet, the function sends a response with a 405 HTTP
 // error.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	if m.cors {
+		res.Header().Set("Access-Control-Allow-Origin", "*")
+		res.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		if req.Method == http.MethodOptions {
+			res.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
 	if route, exist := m.find(req.Method, req.URL.Path); exist {
 		if args, ok := route.decodeArgs(req.URL.Path); ok {
 			for key, val := range args {
