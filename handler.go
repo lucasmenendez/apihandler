@@ -115,7 +115,8 @@ func NewHandler(cors bool) *Handler {
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if m.cors {
 		res.Header().Set("Access-Control-Allow-Origin", "*")
-		res.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		res.Header().Set("Access-Control-Allow-Headers", "*")
+		res.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, CONNECT, TRACE")
 		if req.Method == http.MethodOptions {
 			res.WriteHeader(http.StatusOK)
 			return
