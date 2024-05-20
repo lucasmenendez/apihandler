@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"golang.org/x/time/rate"
 )
 
 // uriSeparator contains a string with the backslash character to split the
@@ -90,20 +92,43 @@ func (r *route) decodeArgs(requestURI string) (map[string]string, bool) {
 	return args, true
 }
 
+type RateLimitConfig struct {
+	Rate  float64
+	Limit int
+}
+
+type Config struct {
+	CORS bool
+	*RateLimitConfig
+}
+
 // Handler struct cotains the list of assigned routes and also an error channel
 // to listen to raised errors using `Handler.Error(error)`.
 type Handler struct {
-	mtx    *sync.Mutex
-	routes []*route
-	cors   bool
+	mtx         *sync.Mutex
+	routes      []*route
+	rateLimiter *rateLimiter
+	cors        bool
 }
 
 // NewHandler function returns a Handler initialized and read-to-use.
-func NewHandler(cors bool) *Handler {
+func NewHandler(cfg *Config) *Handler {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+
+	var rl *rateLimiter
+	if cfg.RateLimitConfig != nil {
+		rl = &rateLimiter{
+			r: rate.Limit(cfg.Rate),
+			b: cfg.Limit,
+		}
+	}
 	return &Handler{
-		mtx:    &sync.Mutex{},
-		routes: []*route{},
-		cors:   cors,
+		mtx:         &sync.Mutex{},
+		routes:      []*route{},
+		rateLimiter: rl,
+		cors:        cfg.CORS,
 	}
 }
 
@@ -113,6 +138,15 @@ func NewHandler(cors bool) *Handler {
 // it is not registered yet, the function sends a response with a 405 HTTP
 // error.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	// check if rate limiter is enabled and if the request is allowed
+	if m.rateLimiter != nil {
+		limiter := m.rateLimiter.Get(req.RemoteAddr)
+		if !limiter.Allow() {
+			http.Error(res, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+	}
+	// check if CORS is enabled and set headers
 	if m.cors {
 		res.Header().Set("Access-Control-Allow-Origin", "*")
 		res.Header().Set("Access-Control-Allow-Headers", "*")
@@ -122,7 +156,7 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-
+	// find route and execute handler
 	if route, exist := m.find(req.Method, req.URL.Path); exist {
 		if args, ok := route.decodeArgs(req.URL.Path); ok {
 			for key, val := range args {
@@ -132,8 +166,8 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	res.WriteHeader(http.StatusMethodNotAllowed)
-	_, _ = res.Write([]byte("405 method not allowed"))
+	// if no route is found, return 405 Method Not Allowed
+	http.Error(res, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 }
 
 // HandleFunc method assign the provided handler for requests sent to the

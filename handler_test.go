@@ -17,7 +17,7 @@ var testHandler = func(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	handler := NewHandler(false)
+	handler := NewHandler(&Config{CORS: false})
 
 	if err := handler.HandleFunc("wrongmethod", testPath, testHandler); err == nil {
 		t.Fatal("expected error, got nil")
@@ -41,7 +41,7 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestServerHTTP(t *testing.T) {
-	handler := NewHandler(false)
+	handler := NewHandler(&Config{CORS: false})
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 	go func() {
 		if err := http.ListenAndServe(":8080", handler); err != nil {
@@ -77,7 +77,7 @@ func TestServerHTTP(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	handler := NewHandler(false)
+	handler := NewHandler(&Config{CORS: false})
 
 	if err := handler.Get(testPath, testHandler); err != nil {
 		t.Fatalf("expected nil, got %s", err)
