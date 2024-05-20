@@ -57,7 +57,7 @@ func TestServerHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil, got error: %s", err)
 	}
-	if err := string(body); !strings.Contains(err, "405") {
+	if err := string(body); !strings.Contains(err, http.StatusText(http.StatusMethodNotAllowed)) {
 		t.Fatalf("expected 405 error, got %s", err)
 	}
 
