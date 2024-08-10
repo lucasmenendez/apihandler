@@ -25,8 +25,8 @@ err := handler.Get("/service/{service_name}/resource/{resource_name}",
     func(w http.ResponseWriter, r *http.Request) {
         // get router arguments from Header
         status := map[string]string{
-            "service":  apihandler.FromContext(r.Context(), "service_name"),
-            "resource": apihandler.FromContext(r.Context(), "resource_name"),
+            "service":  apihandler.URIParam(r.Context(), "service_name"),
+            "resource": apihandler.URIParam(r.Context(), "resource_name"),
             "status":   "ok",
         }
         // encoding response
