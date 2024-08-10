@@ -13,7 +13,7 @@ const testPath = "/test/{name}"
 const testURI = "/test/args"
 
 var testHandler = func(w http.ResponseWriter, req *http.Request) {
-	name := FromContext(req.Context(), "name")
+	name := URIParam(req.Context(), "name")
 	fmt.Fprintf(w, "test_%s", name)
 }
 

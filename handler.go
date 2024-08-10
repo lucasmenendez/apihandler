@@ -14,7 +14,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type URLParamKey string
+type uriParamKey string
 
 // uriSeparator contains a string with the backslash character to split the
 // URI for sanity checks
@@ -114,11 +114,11 @@ type Handler struct {
 	cors        bool
 }
 
-// FromContext function returns the value of the key provided from the context
-// provided. It is used to get the named arguments of the request URI from the
-// request context.
-func FromContext(ctx context.Context, key string) string {
-	return ctx.Value(URLParamKey(key)).(string)
+// URIParam function returns the value of the named argument from the request
+// context. It is used to access the named arguments from the request URI in the
+// handler function.
+func URIParam(ctx context.Context, key string) string {
+	return ctx.Value(uriParamKey(key)).(string)
 }
 
 // NewHandler function returns a Handler initialized and read-to-use.
@@ -172,7 +172,7 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		if args, ok := route.decodeArgs(req.URL.Path); ok {
 			ctx := req.Context()
 			for key, val := range args {
-				ctx = context.WithValue(ctx, URLParamKey(key), val)
+				ctx = context.WithValue(ctx, uriParamKey(key), val)
 			}
 			route.handler(res, req.WithContext(ctx))
 			return
