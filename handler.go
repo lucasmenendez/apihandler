@@ -4,6 +4,7 @@
 package apihandler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -12,6 +13,8 @@ import (
 
 	"golang.org/x/time/rate"
 )
+
+type URLParamKey string
 
 // uriSeparator contains a string with the backslash character to split the
 // URI for sanity checks
@@ -111,6 +114,13 @@ type Handler struct {
 	cors        bool
 }
 
+// FromContext function returns the value of the key provided from the context
+// provided. It is used to get the named arguments of the request URI from the
+// request context.
+func FromContext(ctx context.Context, key string) string {
+	return ctx.Value(URLParamKey(key)).(string)
+}
+
 // NewHandler function returns a Handler initialized and read-to-use.
 func NewHandler(cfg *Config) *Handler {
 	if cfg == nil {
@@ -136,7 +146,8 @@ func NewHandler(cfg *Config) *Handler {
 // executed when a request is received. It checks if the handler has a route
 // assigned with the request method and path to execute the route handler. If
 // it is not registered yet, the function sends a response with a 405 HTTP
-// error.
+// error. It also stores the URL parameters, if they exist, in the request
+// context to allow the handler to access them.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// check if rate limiter is enabled and if the request is allowed
 	if m.rateLimiter != nil {
@@ -159,10 +170,11 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// find route and execute handler
 	if route, exist := m.find(req.Method, req.URL.Path); exist {
 		if args, ok := route.decodeArgs(req.URL.Path); ok {
+			ctx := req.Context()
 			for key, val := range args {
-				req.Header.Set(key, val)
+				ctx = context.WithValue(ctx, URLParamKey(key), val)
 			}
-			route.handler(res, req)
+			route.handler(res, req.WithContext(ctx))
 			return
 		}
 	}

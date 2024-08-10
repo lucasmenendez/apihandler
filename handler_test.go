@@ -13,7 +13,8 @@ const testPath = "/test/{name}"
 const testURI = "/test/args"
 
 var testHandler = func(w http.ResponseWriter, req *http.Request) {
-	fmt.Fprintf(w, "test_%s", req.Header.Get("name"))
+	name := FromContext(req.Context(), "name")
+	fmt.Fprintf(w, "test_%s", name)
 }
 
 func TestHandleFunc(t *testing.T) {
