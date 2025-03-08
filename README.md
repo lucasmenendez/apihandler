@@ -9,6 +9,8 @@
 
 apihandler package provides a simple `http.Handler` implementation with a REST friendly API syntax. Provides simple methods to assign handlers to a path by HTTP method.
 
+It also supports the configuration of a rate limit by request origin to prevent abuse.
+
 ### Installation
 ```sh
 go get github.com/lucasmenendez/apihandler
@@ -19,8 +21,12 @@ go get github.com/lucasmenendez/apihandler
 Check out the [full example here](example_test.go).
 
 ```go 
-// create and register a new GET handler
-handler := NewHandler()
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+// create and register a new GET handler with cors enabled and a rate limit
+// of one request per second
+handler := NewHandler(true, RateLimiter(ctx, 1, 1, time.Minute
 err := handler.Get("/service/{service_name}/resource/{resource_name}",
     func(w http.ResponseWriter, r *http.Request) {
         // get router arguments from Header

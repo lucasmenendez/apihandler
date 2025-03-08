@@ -1,15 +1,19 @@
 package apihandler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func Example() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// create and register a new GET handler
-	handler := NewHandler(true, nil)
+	handler := NewHandler(true, RateLimiter(ctx, 1, 1, time.Minute))
 	err := handler.Get("/service/{service_name}/resource/{resource_name}",
 		func(w http.ResponseWriter, r *http.Request) {
 			// get router arguments from Header
