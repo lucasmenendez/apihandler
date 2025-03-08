@@ -1,7 +1,7 @@
 [![Last release](https://img.shields.io/github/v/release/lucasmenendez/apihandler?color=purple)](https://github.com/lucasmenendez/apihandler/releases/latest)
 [![GoDoc](https://godoc.org/github.com/lucasmenendez/apihandler?status.svg)](https://godoc.org/github.com/lucasmenendez/apihandler) 
 [![Go Report Card](https://goreportcard.com/badge/github.com/lucasmenendez/apihandler)](https://goreportcard.com/report/github.com/lucasmenendez/apihandler)
-[![test](https://github.com/lucasmenendez/apihandler/workflows/test/badge.svg)](https://github.com/lucasmenendez/apihandler/actions?query=workflow%3Atest)
+[![Build and Test](https://github.com/lucasmenendez/apihandler/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/lucasmenendez/apihandler/actions/workflows/main.yml)
 [![license](https://img.shields.io/github/license/lucasmenendez/apihandler)](LICENSE)
 
 
