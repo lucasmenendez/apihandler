@@ -26,7 +26,7 @@ defer cancel()
 
 // create and register a new GET handler with cors enabled and a rate limit
 // of one request per second
-handler := NewHandler(true, RateLimiter(ctx, 1, 1, time.Minute
+handler := NewHandler(true, RateLimiter(ctx, 1, 1, time.Minute))
 err := handler.Get("/service/{service_name}/resource/{resource_name}",
     func(w http.ResponseWriter, r *http.Request) {
         // get router arguments from Header
