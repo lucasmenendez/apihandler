@@ -1,6 +1,7 @@
 package apihandler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,7 +23,7 @@ var testHandler = func(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	handler := NewHandler(nil)
+	handler := NewHandler(false, nil)
 
 	if err := handler.HandleFunc("wrongmethod", testPath, testHandler); err == nil {
 		t.Fatal("expected error, got nil")
@@ -46,7 +47,7 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestServerHTTP(t *testing.T) {
-	handler := NewHandler(&Config{CORS: false})
+	handler := NewHandler(false, nil)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 
 	server := httptest.NewServer(handler)
@@ -87,7 +88,7 @@ func TestServerHTTP(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	handler := NewHandler(&Config{CORS: false})
+	handler := NewHandler(false, nil)
 
 	if err := handler.Get(testPath, testHandler); err != nil {
 		t.Fatalf("expected nil, got %s", err)
@@ -206,7 +207,7 @@ func Test_parseAndDecodeArgs(t *testing.T) {
 }
 
 func TestCORSHeaders(t *testing.T) {
-	handler := NewHandler(&Config{CORS: true})
+	handler := NewHandler(true, nil)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 
 	server := httptest.NewServer(handler)
@@ -233,7 +234,7 @@ func TestCORSHeaders(t *testing.T) {
 	}
 
 	server.Close()
-	handler = NewHandler(&Config{CORS: false})
+	handler = NewHandler(false, nil)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 	server = httptest.NewServer(handler)
 
@@ -259,11 +260,9 @@ func TestCORSHeaders(t *testing.T) {
 }
 
 func TestHandlerWithRateLimiter(t *testing.T) {
-	handler := NewHandler(&Config{
-		CORS:  false,
-		Rate:  1, // 1 request per second
-		Limit: 1, // burst limit of 1
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	handler := NewHandler(false, RateLimiter(ctx, 1, 1, time.Second))
 
 	handler.Get(testPath, testHandler)
 

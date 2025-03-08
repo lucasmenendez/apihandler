@@ -9,7 +9,7 @@ import (
 
 func Example() {
 	// create and register a new GET handler
-	handler := NewHandler(&Config{CORS: true})
+	handler := NewHandler(true, nil)
 	err := handler.Get("/service/{service_name}/resource/{resource_name}",
 		func(w http.ResponseWriter, r *http.Request) {
 			// get router arguments from Header

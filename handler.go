@@ -8,34 +8,19 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-
-	"golang.org/x/time/rate"
 )
 
-var (
-	// supportedMethods variable contains the list of HTTP suppoted methods
-	supportedMethods = []string{
-		http.MethodGet,
-		http.MethodHead,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodPatch,
-		http.MethodDelete,
-		http.MethodConnect,
-		http.MethodOptions,
-		http.MethodTrace,
-	}
-)
-
-// Config struct contains the configuration parameters to initialize a new
-// Handler instance. It contains the CORS flag to enable CORS headers in the
-// responses, the rate to limit the requests per second, and the limit of
-// requests allowed per second. If the rate or the limit are set to 0, the
-// rate limiter will be disabled.
-type Config struct {
-	CORS  bool
-	Rate  float64
-	Limit int
+// supportedMethods variable contains the list of HTTP suppoted methods
+var supportedMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodConnect,
+	http.MethodOptions,
+	http.MethodTrace,
 }
 
 // Handler struct cotains the list of assigned routes and also an error channel
@@ -54,23 +39,16 @@ func URIParam(ctx context.Context, key string) string {
 	return ctx.Value(argName(key)).(string)
 }
 
-// NewHandler function returns a Handler initialized and read-to-use.
-func NewHandler(cfg *Config) *Handler {
-	if cfg == nil {
-		cfg = &Config{}
-	}
-	var rl *rateLimiter
-	if cfg.Rate > 0 && cfg.Limit > 0 {
-		rl = &rateLimiter{
-			r: rate.Limit(cfg.Rate),
-			b: cfg.Limit,
-		}
-	}
+// NewHandler function returns a Handler initialized and read-to-use. It
+// receives a boolean to enable or disable CORS and a rateLimiter to enable
+// rate limiting for the handler. If rateLimiter is nil, rate limiting is
+// disabled. To define a rate limiter, use the `RateLimiter` function.
+func NewHandler(enableCors bool, rl *rateLimiter) *Handler {
 	return &Handler{
 		mtx:         &sync.Mutex{},
 		routes:      []*route{},
 		rateLimiter: rl,
-		cors:        cfg.CORS,
+		cors:        enableCors,
 	}
 }
 
@@ -83,7 +61,7 @@ func NewHandler(cfg *Config) *Handler {
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// check if rate limiter is enabled and if the request is allowed
 	if m.rateLimiter != nil {
-		if !m.rateLimiter.Allowed(req.RemoteAddr) {
+		if !m.rateLimiter.isAllowed(req.RemoteAddr) {
 			http.Error(res, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}
@@ -92,7 +70,8 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if m.cors {
 		res.Header().Set("Access-Control-Allow-Origin", "*")
 		res.Header().Set("Access-Control-Allow-Headers", "*")
-		res.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, CONNECT, TRACE")
+		res.Header().Set("Access-Control-Allow-Methods",
+			"GET, POST, PUT, PATCH, DELETE, OPTIONS, CONNECT, TRACE")
 		if req.Method == http.MethodOptions {
 			res.WriteHeader(http.StatusOK)
 			return
@@ -115,9 +94,9 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 // HandleFunc method assign the provided handler for requests sent to the
 // desired method and path. It checks if the method provided is already
-// supported before assign it. It also transform the provided path into a regex
-// and assign it to the created route. If already exists a route with the same
-// method and path, it will be overwritten.
+// supported before assign it. It also transform the provided path into a
+// regex and assign it to the created route. If already exists a route with
+// the same method and path, it will be overwritten.
 func (m *Handler) HandleFunc(method, path string, handler func(http.ResponseWriter, *http.Request)) error {
 	for _, supported := range supportedMethods {
 		if supported == method {
