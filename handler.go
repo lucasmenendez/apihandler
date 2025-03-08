@@ -7,102 +7,35 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
-	"strings"
 	"sync"
 
 	"golang.org/x/time/rate"
 )
 
-type uriParamKey string
-
-// uriSeparator contains a string with the backslash character to split the
-// URI for sanity checks
-const uriSeparator = "/"
-
-// argsToRgxSub constant contains the regex pattern to match a named argument
-// in a request URI, includes the interpolation of the name of the argument.
-const argsToRgxSub = "(?P<$arg_name>.+)"
-
-// argsToRgx variable is a regex that allows to detect named arguments from a
-// route path, helping to build a regex to match requests URIs with the route
-// supporting named args.
-var argsToRgx = regexp.MustCompile(`(?U)\{(?P<arg_name>.+)\}`)
-
-// supportedMethods variable contains the list of HTTP suppoted methods
-var supportedMethods = []string{
-	http.MethodGet,
-	http.MethodHead,
-	http.MethodPost,
-	http.MethodPut,
-	http.MethodPatch,
-	http.MethodDelete,
-	http.MethodConnect,
-	http.MethodOptions,
-	http.MethodTrace,
-}
-
-// route struct contains the parameters of a valid route, which contains the
-// method, the path, a regex to match request URIs with paths that use named
-// arguments, and the route handler.
-type route struct {
-	method  string
-	path    string
-	rgx     *regexp.Regexp
-	handler func(http.ResponseWriter, *http.Request)
-}
-
-// parse function transforms the provided path into a regex to match with
-// the URI of incoming requests. The resulting regex will be stored into current
-// route and will be used to match named arguments from a request URI.
-func (r *route) parse() error {
-	rgx := argsToRgx.ReplaceAllString(r.path, argsToRgxSub)
-	escapedRgx := strings.ReplaceAll(rgx, "/", "\\/")
-	var err error
-	if r.rgx, err = regexp.Compile(fmt.Sprintf("%s$", escapedRgx)); err != nil {
-		return fmt.Errorf("error parsing path: %w", err)
+var (
+	// supportedMethods variable contains the list of HTTP suppoted methods
+	supportedMethods = []string{
+		http.MethodGet,
+		http.MethodHead,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodConnect,
+		http.MethodOptions,
+		http.MethodTrace,
 	}
-	return nil
-}
+)
 
-// match function returns if the requestURI provided matches with the current
-// route regex. It also checks if both arguments have the same number of
-// URI parts to ensure that is the same level of depth.
-func (r *route) match(requestURI string) bool {
-	uri, _ := strings.CutSuffix(requestURI, uriSeparator)
-	lenURI := strings.Count(uri, uriSeparator)
-	lenRgx := strings.Count(r.rgx.String(), uriSeparator)
-	return lenURI == lenRgx && r.rgx.MatchString(requestURI)
-}
-
-// decodeArgs function returns if the request URI matches with the route regex
-// provided and the named arguments that the URI could contain.
-func (r *route) decodeArgs(requestURI string) (map[string]string, bool) {
-	// check if matches
-	if !r.match(requestURI) {
-		return nil, false
-	}
-	// find named arguments
-	args := make(map[string]string)
-	uri, _ := strings.CutSuffix(requestURI, uriSeparator)
-	matches := r.rgx.FindStringSubmatch(uri)
-	if len(matches) < 1 {
-		return nil, false
-	}
-	for i, name := range r.rgx.SubexpNames()[0:] {
-		args[name] = matches[i]
-	}
-	return args, true
-}
-
-type RateLimitConfig struct {
+// Config struct contains the configuration parameters to initialize a new
+// Handler instance. It contains the CORS flag to enable CORS headers in the
+// responses, the rate to limit the requests per second, and the limit of
+// requests allowed per second. If the rate or the limit are set to 0, the
+// rate limiter will be disabled.
+type Config struct {
+	CORS  bool
 	Rate  float64
 	Limit int
-}
-
-type Config struct {
-	CORS bool
-	*RateLimitConfig
 }
 
 // Handler struct cotains the list of assigned routes and also an error channel
@@ -118,7 +51,7 @@ type Handler struct {
 // context. It is used to access the named arguments from the request URI in the
 // handler function.
 func URIParam(ctx context.Context, key string) string {
-	return ctx.Value(uriParamKey(key)).(string)
+	return ctx.Value(argName(key)).(string)
 }
 
 // NewHandler function returns a Handler initialized and read-to-use.
@@ -126,9 +59,8 @@ func NewHandler(cfg *Config) *Handler {
 	if cfg == nil {
 		cfg = &Config{}
 	}
-
 	var rl *rateLimiter
-	if cfg.RateLimitConfig != nil {
+	if cfg.Rate > 0 && cfg.Limit > 0 {
 		rl = &rateLimiter{
 			r: rate.Limit(cfg.Rate),
 			b: cfg.Limit,
@@ -151,8 +83,7 @@ func NewHandler(cfg *Config) *Handler {
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// check if rate limiter is enabled and if the request is allowed
 	if m.rateLimiter != nil {
-		limiter := m.rateLimiter.Get(req.RemoteAddr)
-		if !limiter.Allow() {
+		if !m.rateLimiter.Allowed(req.RemoteAddr) {
 			http.Error(res, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}
@@ -172,7 +103,7 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		if args, ok := route.decodeArgs(req.URL.Path); ok {
 			ctx := req.Context()
 			for key, val := range args {
-				ctx = context.WithValue(ctx, uriParamKey(key), val)
+				ctx = context.WithValue(ctx, argName(key), val)
 			}
 			route.handler(res, req.WithContext(ctx))
 			return

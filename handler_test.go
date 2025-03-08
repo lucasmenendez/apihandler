@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
-const testMethod = http.MethodGet
-const testPath = "/test/{name}"
-const testURI = "/test/args"
+const (
+	testMethod = http.MethodGet
+	testPath   = "/test/{name}"
+	testURI    = "/test/args"
+)
 
 var testHandler = func(w http.ResponseWriter, req *http.Request) {
 	name := URIParam(req.Context(), "name")
@@ -18,7 +22,7 @@ var testHandler = func(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	handler := NewHandler(&Config{CORS: false})
+	handler := NewHandler(nil)
 
 	if err := handler.HandleFunc("wrongmethod", testPath, testHandler); err == nil {
 		t.Fatal("expected error, got nil")
@@ -44,13 +48,11 @@ func TestHandleFunc(t *testing.T) {
 func TestServerHTTP(t *testing.T) {
 	handler := NewHandler(&Config{CORS: false})
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
-	go func() {
-		if err := http.ListenAndServe(":8080", handler); err != nil {
-			t.Log(err)
-		}
-	}()
 
-	resp, err := http.Get("http://localhost:8080")
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
 	if err != nil {
 		t.Fatalf("expected nil, got error: %s", err)
 	}
@@ -62,7 +64,7 @@ func TestServerHTTP(t *testing.T) {
 		t.Fatalf("expected 405 error, got %s", err)
 	}
 
-	resp, err = http.Get("http://localhost:8080" + testURI)
+	resp, err = http.Get(server.URL + testURI)
 	if err != nil {
 		t.Fatalf("expected nil, got error: %s", err)
 	}
@@ -74,6 +76,13 @@ func TestServerHTTP(t *testing.T) {
 
 	if string(body) != "test_args" {
 		t.Fatalf("expected 'test_args', got %s", string(body))
+	}
+	resp, err = http.Get(server.URL + "/invalid")
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 error, got %d", resp.StatusCode)
 	}
 }
 
@@ -193,5 +202,107 @@ func Test_parseAndDecodeArgs(t *testing.T) {
 	}
 	if value, ok := args["id"]; !ok || value != "0xffffff" {
 		t.Fatalf("expected '0xffffff', got '%s'", value)
+	}
+}
+
+func TestCORSHeaders(t *testing.T) {
+	handler := NewHandler(&Config{CORS: true})
+	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + testURI)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	if resp.Header.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("expected CORS headers, got none")
+	}
+
+	req, err := http.NewRequest(http.MethodOptions, server.URL+testURI, nil)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status OK, got %d", resp.StatusCode)
+	}
+
+	server.Close()
+	handler = NewHandler(&Config{CORS: false})
+	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
+	server = httptest.NewServer(handler)
+
+	resp, err = http.Get(server.URL + testURI)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	if resp.Header.Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("expected no CORS headers, got some")
+	}
+
+	req, err = http.NewRequest(http.MethodOptions, server.URL+testURI, nil)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	}
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status Method Not Allowed, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandlerWithRateLimiter(t *testing.T) {
+	handler := NewHandler(&Config{
+		CORS:  false,
+		Rate:  1, // 1 request per second
+		Limit: 1, // burst limit of 1
+	})
+
+	handler.Get(testPath, testHandler)
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	// Helper function to perform a request and check the status code
+	doRequest := func() (int, error) {
+		resp, err := http.Get(server.URL + testURI)
+		if err != nil {
+			return 0, err
+		}
+		return resp.StatusCode, nil
+	}
+
+	// First request should be allowed
+	if status, err := doRequest(); err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	} else if status != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, status)
+	}
+
+	// Wait for a short duration to ensure the rate limiter is in effect
+	time.Sleep(500 * time.Millisecond)
+
+	// Second request should be rate limited
+	if status, err := doRequest(); err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	} else if status != http.StatusTooManyRequests {
+		t.Fatalf("expected status %d, got %d", http.StatusTooManyRequests, status)
+	}
+
+	// Wait for rate limiter to reset
+	time.Sleep(1 * time.Second)
+
+	// Third request should be allowed again
+	if status, err := doRequest(); err != nil {
+		t.Fatalf("expected nil, got error: %s", err)
+	} else if status != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, status)
 	}
 }
