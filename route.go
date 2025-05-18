@@ -11,6 +11,8 @@ import (
 // from a request URI.
 type argName string
 
+type HandlerFunc func(http.ResponseWriter, *http.Request)
+
 const (
 	// uriSeparator contains a string with the backslash character to split
 	// the URI for sanity checks
@@ -33,7 +35,7 @@ type route struct {
 	method  string
 	path    string
 	rgx     *regexp.Regexp
-	handler func(http.ResponseWriter, *http.Request)
+	handler HandlerFunc
 }
 
 // parse function transforms the provided path into a regex to match with
