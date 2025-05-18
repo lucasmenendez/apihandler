@@ -29,7 +29,6 @@ type client struct {
 // does not grow indefinitely.
 type RateLimiter struct {
 	ctx       context.Context
-	cancel    context.CancelFunc
 	clients   map[string]*client
 	mtx       sync.Mutex
 	maxTokens int
@@ -41,10 +40,8 @@ type RateLimiter struct {
 // the internal context and starts a cleanup goroutine to remove old clients
 // that have not made requests within the specified interval.
 func NewRateLimiter(ctx context.Context, maxTokens int, interval time.Duration) *RateLimiter {
-	innerCtx, cancel := context.WithCancel(ctx)
 	rt := &RateLimiter{
-		ctx:       innerCtx,
-		cancel:    cancel,
+		ctx:       ctx,
 		clients:   make(map[string]*client),
 		maxTokens: maxTokens,
 		interval:  interval,
@@ -58,16 +55,15 @@ func NewRateLimiter(ctx context.Context, maxTokens int, interval time.Duration) 
 // is allowed if the client has tokens available, or if the client is older
 // than the interval, in which case the tokens are reset to 1 and the age
 // is updated.
-func (rl *RateLimiter) Allow(r *http.Request) bool {
-	ip := getIPOrHostname(r)
+func (rl *RateLimiter) Allow(id string) bool {
 	rl.mtx.Lock()
 	defer rl.mtx.Unlock()
 	// get the client by IP address
-	cl, exists := rl.clients[ip]
+	cl, exists := rl.clients[id]
 	// if the client does not exist, create a new one with 1 token and return
 	// true
 	if !exists {
-		rl.clients[ip] = &client{tokens: 1, age: time.Now()}
+		rl.clients[id] = &client{tokens: 1, age: time.Now()}
 		return true
 	}
 	// if the client exists, check if it has tokens available, if it does,
@@ -94,7 +90,8 @@ func (rl *RateLimiter) Allow(r *http.Request) bool {
 // original handler.
 func (rl *RateLimiter) Middleware(next HandlerFunc) HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !rl.Allow(r) {
+		id := requestHostname(r)
+		if !rl.Allow(id) {
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -126,10 +123,10 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// getIPOrHostname extracts the IP address or the hostname from the request.
+// requestHostname extracts the IP address or the hostname from the request.
 // It checks the "X-Forwarded-For" header first, which is commonly used
 // in reverse proxy setups to forward the original client's IP address.
-func getIPOrHostname(r *http.Request) string {
+func requestHostname(r *http.Request) string {
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		parts := strings.Split(forwarded, ",")
 		ip := strings.TrimSpace(parts[0])
