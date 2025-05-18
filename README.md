@@ -24,11 +24,14 @@ Check out the [full example here](example_test.go).
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
 
+// create a rate limiter to limit the endpoint to 20 per minute by hostname
+rateLimiter := NewRateLimiter(ctx, 20, time.Minute)
+
 // create and register a new GET handler with cors enabled and a rate limit
 // of one request per second
 handler := NewHandler(true, RateLimiter(ctx, 1, 1, time.Minute))
 err := handler.Get("/service/{service_name}/resource/{resource_name}",
-    func(w http.ResponseWriter, r *http.Request) {
+    rateLimiter.Middleware(func(w http.ResponseWriter, r *http.Request) {
         // get router arguments from Header
         status := map[string]string{
             "service":  apihandler.URIParam(r.Context(), "service_name"),
@@ -44,7 +47,7 @@ err := handler.Get("/service/{service_name}/resource/{resource_name}",
         }
         // writing response
         _, _ = w.Write(body)
-    })
+    }))
 if err != nil {
     log.Printf("ERR: error listening for requests: %s\n", err)
 }

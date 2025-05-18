@@ -26,10 +26,9 @@ var supportedMethods = []string{
 // Handler struct cotains the list of assigned routes and also an error channel
 // to listen to raised errors using `Handler.Error(error)`.
 type Handler struct {
-	mtx         *sync.Mutex
-	routes      []*route
-	rateLimiter *rateLimiter
-	cors        bool
+	mtx    *sync.Mutex
+	routes []*route
+	cors   bool
 }
 
 // URIParam function returns the value of the named argument from the request
@@ -40,15 +39,12 @@ func URIParam(ctx context.Context, key string) string {
 }
 
 // NewHandler function returns a Handler initialized and read-to-use. It
-// receives a boolean to enable or disable CORS and a rateLimiter to enable
-// rate limiting for the handler. If rateLimiter is nil, rate limiting is
-// disabled. To define a rate limiter, use the `RateLimiter` function.
-func NewHandler(enableCors bool, rl *rateLimiter) *Handler {
+// receives a boolean to enable or disable CORS.
+func NewHandler(enableCors bool) *Handler {
 	return &Handler{
-		mtx:         &sync.Mutex{},
-		routes:      []*route{},
-		rateLimiter: rl,
-		cors:        enableCors,
+		mtx:    &sync.Mutex{},
+		routes: []*route{},
+		cors:   enableCors,
 	}
 }
 
@@ -59,13 +55,6 @@ func NewHandler(enableCors bool, rl *rateLimiter) *Handler {
 // error. It also stores the URL parameters, if they exist, in the request
 // context to allow the handler to access them.
 func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	// check if rate limiter is enabled and if the request is allowed
-	if m.rateLimiter != nil {
-		if !m.rateLimiter.isAllowed(req.RemoteAddr) {
-			http.Error(res, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
-			return
-		}
-	}
 	// check if CORS is enabled and set headers
 	if m.cors {
 		res.Header().Set("Access-Control-Allow-Origin", "*")
@@ -97,7 +86,7 @@ func (m *Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 // supported before assign it. It also transform the provided path into a
 // regex and assign it to the created route. If already exists a route with
 // the same method and path, it will be overwritten.
-func (m *Handler) HandleFunc(method, path string, handler func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) HandleFunc(method, path string, handler HandlerFunc) error {
 	for _, supported := range supportedMethods {
 		if supported == method {
 			m.mtx.Lock()
@@ -127,47 +116,47 @@ func (m *Handler) HandleFunc(method, path string, handler func(http.ResponseWrit
 }
 
 // Get method wraps `Handler.HandleFunc` for HTTP method 'GET'.
-func (m *Handler) Get(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Get(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodGet, p, h)
 }
 
 // Head method wraps `Handler.HandleFunc` for HTTP method 'HEAD'.
-func (m *Handler) Head(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Head(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodHead, p, h)
 }
 
 // Post method wraps `Handler.HandleFunc` for HTTP method 'POST'.
-func (m *Handler) Post(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Post(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodPost, p, h)
 }
 
 // Put method wraps `Handler.HandleFunc` for HTTP method 'PUT'.
-func (m *Handler) Put(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Put(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodPut, p, h)
 }
 
 // Patch method wraps `Handler.HandleFunc` for HTTP method 'PATCH'.
-func (m *Handler) Patch(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Patch(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodPatch, p, h)
 }
 
 // Delete method wraps `Handler.HandleFunc` for HTTP method 'DELETE'.
-func (m *Handler) Delete(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Delete(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodDelete, p, h)
 }
 
 // Connect method wraps `Handler.HandleFunc` for HTTP method 'CONNECT'.
-func (m *Handler) Connect(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Connect(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodConnect, p, h)
 }
 
 // Options method wraps `Handler.HandleFunc` for HTTP method 'OPTIONS'.
-func (m *Handler) Options(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Options(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodOptions, p, h)
 }
 
 // Trace method wraps `Handler.HandleFunc` for HTTP method 'TRACE'.
-func (m *Handler) Trace(p string, h func(http.ResponseWriter, *http.Request)) error {
+func (m *Handler) Trace(p string, h HandlerFunc) error {
 	return m.HandleFunc(http.MethodTrace, p, h)
 }
 

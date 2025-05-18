@@ -23,7 +23,7 @@ var testHandler = func(w http.ResponseWriter, req *http.Request) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	handler := NewHandler(false, nil)
+	handler := NewHandler(false)
 
 	if err := handler.HandleFunc("wrongmethod", testPath, testHandler); err == nil {
 		t.Fatal("expected error, got nil")
@@ -47,7 +47,7 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestServerHTTP(t *testing.T) {
-	handler := NewHandler(false, nil)
+	handler := NewHandler(false)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 
 	server := httptest.NewServer(handler)
@@ -88,7 +88,7 @@ func TestServerHTTP(t *testing.T) {
 }
 
 func TestHTTPMethods(t *testing.T) {
-	handler := NewHandler(false, nil)
+	handler := NewHandler(false)
 
 	if err := handler.Get(testPath, testHandler); err != nil {
 		t.Fatalf("expected nil, got %s", err)
@@ -207,7 +207,7 @@ func Test_parseAndDecodeArgs(t *testing.T) {
 }
 
 func TestCORSHeaders(t *testing.T) {
-	handler := NewHandler(true, nil)
+	handler := NewHandler(true)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 
 	server := httptest.NewServer(handler)
@@ -234,7 +234,7 @@ func TestCORSHeaders(t *testing.T) {
 	}
 
 	server.Close()
-	handler = NewHandler(false, nil)
+	handler = NewHandler(false)
 	_ = handler.HandleFunc(http.MethodGet, testPath, testHandler)
 	server = httptest.NewServer(handler)
 
@@ -262,9 +262,12 @@ func TestCORSHeaders(t *testing.T) {
 func TestHandlerWithRateLimiter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	handler := NewHandler(false, RateLimiter(ctx, 1, 1, time.Second))
+	handler := NewHandler(false)
 
-	handler.Get(testPath, testHandler)
+	rateLimiter := NewRateLimiter(ctx, 1, time.Second)
+	if err := handler.Get(testPath, rateLimiter.Middleware(testHandler)); err != nil {
+		t.Fatalf("expected nil, got %s", err)
+	}
 
 	server := httptest.NewServer(handler)
 	defer server.Close()
