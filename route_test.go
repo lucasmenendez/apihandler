@@ -28,7 +28,7 @@ func TestRouteMatch(t *testing.T) {
 		path:    "/users/{id}",
 		handler: func(w http.ResponseWriter, r *http.Request) {},
 	}
-	r.parse()
+	_ = r.parse()
 	tests := []struct {
 		uri      string
 		expected bool
@@ -50,7 +50,7 @@ func TestRouteDecodeArgs(t *testing.T) {
 		path:    "/users/{id}",
 		handler: func(w http.ResponseWriter, r *http.Request) {},
 	}
-	r.parse()
+	_ = r.parse()
 	args, ok := r.decodeArgs("/users/123")
 	if !ok {
 		t.Fatalf("expected true, got false")
